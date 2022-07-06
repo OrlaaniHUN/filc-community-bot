@@ -1,22 +1,46 @@
 import json
 import discord
-import latex
+from discord import Intents, app_commands
+import LaTex
 import horoscope
 import catto
 
-horoszkop_csatorna = 992771006403985429
-rangok_csatorna = 993630780532199536
 
-client = discord.Client()
+horoszkop_csatorna = 994215263551623198 #992771006403985429
+rangok_csatorna = 994215312604012605 #993630780532199536
+
+MyGuild = discord.Object(id=994215181691392051) #991399821850202172
+class aclient(discord.Client):
+    def __init__(self, *, intents: Intents):
+        super().__init__(intents=intents)
+        self.tree = app_commands.CommandTree(self)
+    
+    async def setup_hook(self):
+        self.tree.copy_global_to(guild=MyGuild)
+        await self.tree.sync(guild=MyGuild)
+
+
+
+
+intents = Intents.all()
+intents.members = True
+intents.message_content = True
+
+
+client = aclient(intents=intents)
 token = open("token.txt", "r").read()
 
+
+@client.event
+async def on_ready():
+    print('We have logged in as {0.user}'.format(client))
+
 async def rossz_csatorna(aktualis_csatorna, jo_csatorna):
-    await aktualis_csatorna.send(f"Kérlek használd a megfelelő csatornát: <#{jo_csatorna}> :)")
+    await aktualis_csatorna.send_message(f"Kérlek használd a megfelelő csatornát: <#{jo_csatorna}> :)")
 
 def rangok():
     rangok_fajl = open("roles.json", "r")
     tartalom = rangok_fajl.read()
-    
     rangok_fajl.close()
 
     return json.loads(tartalom)
@@ -25,36 +49,32 @@ def rangok():
 async def on_ready():
     print('We have logged in as {0.user}'.format(client))
 
-@client.event
-async def on_message(message):
-    if message.author == client.user:
-        return
+#parancsok
 
-    if message.content.startswith("!horoszkop"):
-        if message.channel.id == horoszkop_csatorna:
-            try:
-                await message.channel.send(horoscope.fetch(message.content.replace("!horoszkop ", "")))
-            except Exception:
-                await message.channel.send("Nem létező horoszkóp!")
-        else:
-            await rossz_csatorna(message.channel, horoszkop_csatorna)
-    
-    elif message.content.startswith("!latex"):
+@client.tree.command()
+@app_commands.describe(csillagkep="Lehetőségek: kos, bika, ikrek, rak, oroszlan, szuz, merleg, skorpio, nyilas, bak, vizonto, halak")
+async def horoszkop(interaction: discord.Interaction, csillagkep: str):
+    if interaction.channel_id == horoszkop_csatorna:
         try:
-            latex.save_image_from_latex(message.content.replace("!latex", ""))
-            await message.channel.send(file=discord.File("images/compiled_latex.png"))
+            await interaction.response.send_message(horoscope.fetch(csillagkep))
         except Exception:
-            await message.channel.send("Érvénytelen LaTeX!")
-    
-    elif message.content.startswith("!cat"):
-        catto.fetch(message.content.replace("!cat ", ""))
-        await message.channel.send(file=discord.File("images/cat.gif"))
-    
-    elif message.content == "!rangok":
-        if message.channel.id == rangok_csatorna:
-            await message.channel.send("Elérhető rangok:")
-            await message.channel.send("_ _")
-            await message.channel.send("\n\n".join(
+            await interaction.response.send_message("Nem létező horoszkóp!")
+    else:
+            await rossz_csatorna(interaction.response, horoszkop_csatorna)
+
+@client.tree.command()
+@app_commands.describe(cat="http kód vagy random")
+async def cat(interaction: discord.Interaction, cat: str):
+    catto.fetch(cat)
+    await interaction.response.send_message(file=discord.File("images/cat.gif"))
+
+@client.tree.command(description="Publikus rangok felvétele!")
+@app_commands.describe(rang="help vagy rang neve")
+async def rang(interaction: discord.Interaction, rang: str):
+    if interaction.channel_id == rangok_csatorna:
+        if rang == "help":
+            await interaction.response.send_message("Elérhető rangok:\n")
+            await interaction.channel.send("\n\n".join(
                 map(
                     lambda rang: 
                     f"Rang: {rang['name']}\n"
@@ -64,18 +84,43 @@ async def on_message(message):
                 )
             ))
         else:
-            await rossz_csatorna(message.channel, rangok_csatorna)
-    
-    elif message.content.startswith("!rang"):
-        if message.channel.id == rangok_csatorna:
-            kert_rang = message.content.replace("!rang ", "")
             elerheto_rangok = rangok()
+            if rang in map(lambda rang: rang["role"], elerheto_rangok):
+                await interaction.user.add_roles(discord.utils.get(interaction.guild.roles, name=rang))
+                await interaction.response.send_message(f"Megkaptad a {rang} rangot!",ephemeral=True)
 
-            if kert_rang in map(lambda rang: rang["role"], elerheto_rangok):
-                await message.author.add_roles(discord.utils.get(message.guild.roles, name=kert_rang))
-                await message.add_reaction(list(filter(lambda rang: rang["role"] == kert_rang, elerheto_rangok))[0]["emoji"])
-        else:
-            await rossz_csatorna(message.channel, rangok_csatorna)
-            
+    else:
+        await rossz_csatorna(interaction.response, rangok_csatorna)
+
+@client.tree.command(description="Publikus rangok levétele!")
+@app_commands.describe(rang="Rangod neve")
+async def derang(interaction: discord.Interaction, rang: str):
+    if interaction.channel_id == rangok_csatorna:
+        print(interaction.user.roles)
+        for role in interaction.user.roles:
+            if rang in role.name:
+                await interaction.user.remove_roles(role)
+                await interaction.response.send_message(f"Levetted magadról a {rang} rangot!",ephemeral=True)   
+                break
+    else:
+        await rossz_csatorna(interaction.response, rangok_csatorna)
+
+@client.tree.context_menu(name="Conver to Latex")
+async def convert_latex(interaction: discord.Interaction, message: discord.Message):
+    try:
+        LaTex.save_image_from_latex(message.content)
+        await interaction.response.send_message(file=discord.File("images/compiled_latex.png"))
+    except Exception as e:
+        await interaction.response.send_message(f"Érvénytelen Latex! error: {e}")
+
+
+@client.tree.command(description="Szöveg LaTex-é alakítása!")
+@app_commands.describe(text="latex-é alakítandó szöveg")
+async def latex(interaction: discord.Interaction, text: str):
+    try:
+        LaTex.save_image_from_latex(text)
+        await interaction.response.send_message(file=discord.File("images/compiled_latex.png"))
+    except Exception as e:
+        await interaction.response.send_message(f"Érvénytelen Latex! error: {e}")
 
 client.run(token)
