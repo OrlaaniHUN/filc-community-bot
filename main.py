@@ -88,6 +88,8 @@ async def rang(interaction: discord.Interaction, rang: str):
             if rang in map(lambda rang: rang["role"], elerheto_rangok):
                 await interaction.user.add_roles(discord.utils.get(interaction.guild.roles, name=rang))
                 await interaction.response.send_message(f"Megkaptad a {rang} rangot!",ephemeral=True)
+            else:
+                await interaction.response.send_message("Nincs ilyen rang!", ephemeral=True)
 
     else:
         await rossz_csatorna(interaction.response, rangok_csatorna)
@@ -96,12 +98,11 @@ async def rang(interaction: discord.Interaction, rang: str):
 @app_commands.describe(rang="Rangod neve")
 async def derang(interaction: discord.Interaction, rang: str):
     if interaction.channel_id == rangok_csatorna:
-        print(interaction.user.roles)
-        for role in interaction.user.roles:
-            if rang in role.name:
-                await interaction.user.remove_roles(role)
-                await interaction.response.send_message(f"Levetted magadról a {rang} rangot!",ephemeral=True)   
-                break
+        if rang in map(lambda rang: rang.name, interaction.user.roles):
+            await interaction.user.remove_roles(discord.utils.get(interaction.user.roles, name=rang))
+            await interaction.response.send_message(f"Levetted magadról a {rang} rangot!",ephemeral=True)   
+        else:
+            await interaction.response.send_message("Nincs ilyen rangod!")
     else:
         await rossz_csatorna(interaction.response, rangok_csatorna)
 
